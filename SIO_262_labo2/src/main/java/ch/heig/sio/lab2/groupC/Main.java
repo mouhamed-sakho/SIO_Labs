@@ -1,9 +1,4 @@
-package ch.heig.sio.lab2.groupX;
-
-import ch.heig.sio.lab2.coloring.Coloring;
-import ch.heig.sio.lab2.coloring.ColoringAlgorithm;
-import ch.heig.sio.lab2.graph.Graph;
-import ch.heig.sio.lab2.graph.GraphReader;
+package ch.heig.sio.lab2.groupC;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -11,12 +6,17 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Stream;
 
+import ch.heig.sio.lab2.coloring.Coloring;
+import ch.heig.sio.lab2.coloring.ColoringAlgorithm;
+import ch.heig.sio.lab2.graph.Graph;
+import ch.heig.sio.lab2.graph.GraphReader;
+
 public final class Main {
 
   public static void main(String[] args) throws IOException {
     Path dataDir = Path.of(args.length > 0 ? args[0] : "data");
 
-    ColoringAlgorithm algorithm = new TrivialColoring();
+    List<ColoringAlgorithm> algorithms = List.of(new LargestFirst(), new Dsatur());
 
     List<Path> files;
     try (Stream<Path> stream = Files.list(dataDir)) {
@@ -33,13 +33,15 @@ public final class Main {
       }
       System.out.println(file.getFileName() + " " + graph);
 
-      long start = System.nanoTime();
-      Coloring coloring = algorithm.color(graph);
-      long micros = (System.nanoTime() - start) / 1_000;
+      for (ColoringAlgorithm algorithm : algorithms) {
+        long start = System.nanoTime();
+        Coloring coloring = algorithm.color(graph);
+        long micros = (System.nanoTime() - start) / 1_000;
 
-      System.out.printf("  %-16s %5d couleurs  %8d µs  %s%n",
-          algorithm.name(), coloring.colorCount(), micros,
-          coloring.isProperFor(graph) ? "OK" : "INVALIDE");
+        System.out.printf("  %-16s %5d couleurs  %8d µs  %s%n",
+            algorithm.name(), coloring.colorCount(), micros,
+            coloring.isProperFor(graph) ? "OK" : "INVALIDE");
+      }
     }
   }
 }
