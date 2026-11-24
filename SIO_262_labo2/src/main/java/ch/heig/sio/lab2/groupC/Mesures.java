@@ -12,72 +12,98 @@ import ch.heig.sio.lab2.coloring.ColoringAlgorithm;
 import ch.heig.sio.lab2.graph.Graph;
 import ch.heig.sio.lab2.graph.GraphReader;
 
+/**
+ * Mesures comparatives de LF et DSATUR sur tous les graphes d'un répertoire.
+ * <p>
+ * Pour chaque graphe et chaque heuristique : {@link #WARMUP} exécutions d'échauffement non
+ * comptabilisées, puis moyenne du temps de {@link #REPETITIONS} appels à
+ * {@code color(graph)}. Seul cet appel est chronométré ; la lecture du fichier et la
+ * vérification de la coloration sont faites hors chronomètre. Avant toute mesure, un
+ * échauffement global sur le premier graphe laisse la JVM compiler le code, pour que le
+ * premier graphe mesuré ne soit pas pénalisé.
+ * <p>
+ * Le résultat est écrit au format CSV sur la sortie standard.
+ */
 public final class Mesures {
 
-    /** Nombre d'exécutions d'échauffement, non comptabilisées. */
-    static final int WARMUP = 3;
+  /** Nombre d'exécutions d'échauffement, non comptabilisées. */
+  static final int WARMUP = 4;
 
-    /** Nombre d'exécutions mesurées, dont la moyenne est reportée. */
-    static final int REPS = 10;
+  /** Nombre d'exécutions mesurées, dont la moyenne est reportée. */
+  static final int REPETITIONS = 10;
 
-    private Mesures() {
+  /** Nombre d'exécutions de l'échauffement global, sur le premier graphe lisible. */
+  static final int GLOBAL_WARMUP = 20;
+
+  private Mesures() {
+  }
+
+  /**
+   * Point d'entrée.
+   *
+   * @param args {@code args[0]} (optionnel) : répertoire contenant les fichiers {@code .txt}
+   *             des graphes ; {@code data} par défaut
+   * @throws IOException si le répertoire ne peut pas être parcouru
+   */
+  public static void main(String[] args) throws IOException {
+    Path dataDir = Path.of(args.length > 0 ? args[0] : "data");
+    List<ColoringAlgorithm> algorithms = List.of(new LargestFirst(), new Dsatur());
+
+    List<Path> files;
+    try (Stream<Path> stream = Files.list(dataDir)) {
+      files = stream.filter(path -> path.toString().endsWith(".txt")).sorted().toList();
     }
 
-    /**
-     * Point d'entrée.
-     *
-     * @param args {@code args[0]} (optionnel) : répertoire contenant les fichiers {@code .txt}
-     *             des graphes ; {@code data} par défaut
-     * @throws IOException si le répertoire ne peut pas être parcouru
-     */
-    public static void main(String[] args) throws IOException {
-        Path dataDir = Path.of(args.length > 0 ? args[0] : "data");
-        List<ColoringAlgorithm> algos = List.of(new LargestFirst(), new Dsatur());
+    boolean globalWarmupDone = false;
+    System.out.println("instance,n,m,maxDeg,density,colorsLF,colorsDSATUR,usLF,usDSATUR,warmup,reps,valid");
+    for (Path file : files) {
+      Graph graph;
+      try {
+        graph = GraphReader.read(file);
+      } catch (IOException e) {
+        // Fichier mal formé : on le signale et on passe au suivant.
+        System.err.println(file.getFileName() + " : " + e.getMessage());
+        continue;
+      }
 
-        List<Path> files;
-        try (Stream<Path> s = Files.list(dataDir)) {
-            files = s.filter(p -> p.toString().endsWith(".txt")).sorted().toList();
+      if (!globalWarmupDone) {
+        for (ColoringAlgorithm algorithm : algorithms) {
+          for (int i = 0; i < GLOBAL_WARMUP; i++) {
+            algorithm.color(graph);
+          }
         }
+        globalWarmupDone = true;
+      }
 
-        System.out.println("instance,n,m,maxDeg,density,colorsLF,colorsDSATUR,usLF,usDSATUR,warmup,reps,valid");
-        for (Path file : files) {
-            Graph g;
-            try {
-                g = GraphReader.read(file);
-            } catch (IOException e) {
-                // Fichier mal formé : on le signale et on passe au suivant.
-                System.err.println(file.getFileName() + " : " + e.getMessage());
-                continue;
-            }
-            int n = g.vertexCount();
-            long m = g.edgeCount();
-            double density = n >= 2 ? 2.0 * m / ((double) n * (n - 1)) : 0;
+      int n = graph.vertexCount();
+      long m = graph.edgeCount();
+      double density = n >= 2 ? 2.0 * m / ((double) n * (n - 1)) : 0;
 
-            int[] colors = new int[2];
-            double[] micros = new double[2];
-            boolean valid = true;
-            for (int a = 0; a < 2; a++) {
-                ColoringAlgorithm algo = algos.get(a);
-                Coloring c = algo.color(g);
-                for (int i = 0; i < WARMUP; i++) {
-                    c = algo.color(g);
-                }
-                long total = 0;
-                for (int i = 0; i < REPS; i++) {
-                    long t0 = System.nanoTime();
-                    c = algo.color(g);
-                    total += System.nanoTime() - t0;
-                }
-                micros[a] = total / (double) REPS / 1_000.0;
-                colors[a] = c.colorCount();
-                valid &= c.isProperFor(g);   // vérification hors chronomètre
-            }
-
-            String name = file.getFileName().toString().replaceAll("\\.txt$", "");
-            System.out.println(String.format(Locale.ROOT, "%s,%d,%d,%d,%.6f,%d,%d,%.1f,%.1f,%d,%d,%s",
-                    name, n, m, g.maxDegree(), density, colors[0], colors[1],
-                    micros[0], micros[1], WARMUP, REPS, valid));
-            System.out.flush();
+      int[] colorCounts = new int[algorithms.size()];
+      double[] averageMicros = new double[algorithms.size()];
+      boolean valid = true;
+      for (int index = 0; index < algorithms.size(); index++) {
+        ColoringAlgorithm algorithm = algorithms.get(index);
+        for (int i = 0; i < WARMUP; i++) {
+          algorithm.color(graph);
         }
+        Coloring coloring = null;
+        long totalNanos = 0;
+        for (int i = 0; i < REPETITIONS; i++) {
+          long startNanos = System.nanoTime();
+          coloring = algorithm.color(graph);
+          totalNanos += System.nanoTime() - startNanos;
+        }
+        averageMicros[index] = totalNanos / (double) REPETITIONS / 1_000.0;
+        colorCounts[index] = coloring.colorCount();
+        valid &= coloring.isProperFor(graph);   // vérification hors chronomètre
+      }
+
+      String instance = file.getFileName().toString().replaceAll("\\.txt$", "");
+      System.out.println(String.format(Locale.ROOT, "%s,%d,%d,%d,%.6f,%d,%d,%.1f,%.1f,%d,%d,%s",
+          instance, n, m, graph.maxDegree(), density, colorCounts[0], colorCounts[1],
+          averageMicros[0], averageMicros[1], WARMUP, REPETITIONS, valid));
+      System.out.flush();
     }
+  }
 }

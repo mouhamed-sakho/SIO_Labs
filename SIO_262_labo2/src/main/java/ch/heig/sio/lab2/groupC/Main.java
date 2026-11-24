@@ -11,7 +11,22 @@ import ch.heig.sio.lab2.coloring.ColoringAlgorithm;
 import ch.heig.sio.lab2.graph.Graph;
 import ch.heig.sio.lab2.graph.GraphReader;
 
+/**
+ * Programme de démonstration : lit tous les fichiers {@code .txt} d'un répertoire, colore
+ * chaque graphe avec LF et DSATUR, puis affiche le nombre de couleurs, le temps d'un appel
+ * à {@code color(graph)} et la validité de la coloration.
+ * <p>
+ * Les mesures du rapport sont produites par {@link Mesures}.
+ */
 public final class Main {
+
+  /**
+   * Point d'entrée.
+   *
+   * @param args {@code args[0]} (optionnel) : répertoire contenant les fichiers {@code .txt}
+   *             des graphes ; {@code data} par défaut
+   * @throws IOException si le répertoire ne peut pas être parcouru
+   */
 
   public static void main(String[] args) throws IOException {
     Path dataDir = Path.of(args.length > 0 ? args[0] : "data");
